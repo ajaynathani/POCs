@@ -1,0 +1,180 @@
+---
+title: "Forecasting Analytics"
+output: html_notebook
+---
+
+1. Consider the data set SouvenirSales.xls (1995 Jan -2001 Dec) that gives the monthly sales of souvenir at a shop in New York. Back in 2001, an analyst was appointed to forecast sales for the next 12 months (Year 2002). The analyst portioned the data by keeping the last 12 months of data (year 2001) as validation set, and the remaining data as training set. Answer the following questions. Use R . 
+
+```{r}
+# Loading
+library("readxl")
+library("forecast")
+library("fpp2")
+library("imputeTS")
+library("wavelets")
+library("zoo")
+library("TSA")
+library("xts")
+library("timeSeries")
+library("vcdExtra")
+library("dygraphs")
+library("graphics")
+library("tseries")
+library ("urca")
+library("ggplot2")
+
+SouvenirSales <- read_excel("SouvenirSales.xlsx")
+SouvenirSales
+```
+
+a) Plot the time series of the original data. Which time series components appear from the plot
+
+```{r}
+SouvenirSales.ts <- ts(SouvenirSales$Sales, start = c(1995,1), frequency = 12)
+SouvenirSales.ts
+autoplot(SouvenirSales.ts)
+
+```
+
+Ans (a) From the timeseries plot, one can observe that there is level, trend and seasonality present in data,
+
+
+(b) Fit a linear trend model with additive seasonality (Model A) and exponential trend model with multiplicative seasonality (Model B). Consider January as the reference group for each model. Produce the regression coefficients and the validation set errors. Remember to fit only the training period.
+```{r}
+#train test split
+train <- window(SouvenirSales.ts, end = c(2000,12), frequency = 12)
+test <- window(SouvenirSales.ts,start = c(2001,1), frequency = 12)
+
+#linear trend model with additive seasonality (Model A)
+train.modelA <- tslm(train ~ trend + season)
+
+#exponential trend model with multiplicative seasonality (Model B)
+train.modelB <- tslm(train ~ trend + season,lambda = 0)
+
+print("Model A")
+summary(train.modelA)
+
+print("Model B")
+summary(train.modelB)
+```
+
+(c) Which model is the best model considering RMSE as the metric? Could you have understood this from the line chart? Explain. Produce the plot showing the forecasts from both models along with actual data. In a separate plot, present the residuals from both models (consider only the validation set residuals).
+```{r}
+#Forecasting on validation set
+train.modelA.predict <- forecast(train.modelA, h = length(test), level = 0)
+
+train.modelB.predict <- forecast(train.modelB, h = length(test), level = 0)
+
+print("Model A")
+ModelA.RMSE.training = sqrt(mean(train.modelA $residuals^2))
+ModelA.RMSE.validataion = sqrt(mean((test-train.modelA.predict $mean)^2))
+print(paste0("RMSE Training: ",ModelA.RMSE.training))
+print(paste0("RMSE Validation: ",ModelA.RMSE.validataion))
+
+print("")
+print("Model B")
+ModelB.RMSE.training = sqrt(mean(train.modelB $residuals^2))
+ModelB.RMSE.validataion = sqrt(mean((test-train.modelB.predict $mean)^2))
+print(paste0("RMSE Training: ",ModelB.RMSE.training))
+print(paste0("RMSE Validation: ",ModelB.RMSE.validataion))
+
+#Model A - plot showing the forecasts from both models along with actual data
+
+plot(train.modelA.predict, xlab ="Time", ylab= "Sales", main="Souvenier Sales Model A")
+lines(train.modelA.predict$fitted,col="blue",lwd=2, lty=1)
+lines(test)
+legend(1952,400, legend=c("Original", "Forecast"),  col=c("black", "blue"), lty=1:1, cex=1)
+
+#Model B - plot showing the forecasts from both models along with actual data
+plot(train.modelB.predict, xlab ="Time", ylab= "Sales", main="Souvenier Sales Model B",ylim=c(0,80000))
+lines(train.modelB.predict$fitted,col="blue",lwd=2, lty=1)
+lines(test)
+legend(1952,400, legend=c("Original", "Forecast"),  col=c("black", "blue"), lty=1:1, cex=1)
+
+
+
+
+#Model A - residuals  (consider only the validation set residuals).
+
+
+autoplot(train.modelA$residuals)
+
+#Model B - residuals  (consider only the validation set residuals).
+
+
+autoplot(train.modelB$residuals)
+
+
+
+```
+
+Ans (c) Model B(exponential trend and multiplicative seasonality) is better considering the RMSE  as metric. This was also understood from linechart as we can observe the magnitute of seasonality was increasing with trend which is better captured in model B.
+
+
+(d) Examine the additive model. Which month has the highest average sales during the year. What does the estimated trend coefficient in the model A mean?
+```{r}
+#Model A
+summary(train.modelA)
+```
+Ans (d) December has the highest average sales during the year. The coefficient of trend (245.36) measures the annual change in Sales keeping all other variables constant, i.e removing seasonality.
+
+
+(e) Examine the multiplicative model. What does the coefficient of October mean? What does the estimated trend coefficient in the model B mean?
+```{r}
+#model B
+summary(train.modelB)
+```
+Ans(e): The coefficient of October (0.729490) means sales in October are .7294*100 = 72.94% higher than sales in January, keeping other variables constant.
+Trend Coefficient (0.021120) means annual change in Sales is 2.11% keeping other variables constant.
+
+
+(f) Use the best model type from part (c) to forecast the sales in January 2002. Think carefully which data to use for model fitting in this case.
+```{r}
+modelB.full <- tslm(SouvenirSales.ts ~ trend + season,lambda = 0)
+modelB.predict <- forecast(modelB.full,h=1)
+modelB.predict
+```
+
+
+
+(g) Plot the ACF and PACF plot until lag 20 of the residuals obtained from training set of the best model chosen. Comment on these plots and think what AR(p) model could be a good choice?
+```{r}
+residuals.modelB <- train.modelB$residuals
+
+Acf(residuals.modelB,lag.max = 20)
+
+Pacf(residuals.modelB,lag.max = 20)
+
+```
+Ans(g): From the plot, one can observe the 1st and 2nd value as most significant in both plots, will use pacf to determine p i.e. p =2 and q = 2. Hence, AR(2) seems to be a good choice.
+
+
+(h) Fit an AR(p) model as you think appropriate from part (h) to the training set residuals and produce the regression coefficients. Was your intuition at part (h) correct?
+```{r}
+model.AR <- arima(residuals.modelB, order = c(2,0,0))
+model.AR
+
+
+```
+
+Ans(h) The intution that it fits AR(2) model is correct. This is evident from standard error , we see that both coeffiecints are more two standard deviation away from zero. This mean that parameters passed the t-test.
+
+
+(i) Now, using the best regression model and AR(p) model, forecast the sales in January 2002. Think carefully which data to use for model fitting in this case.
+```{r}
+
+
+modelB.full <- tslm(SouvenirSales.ts ~ trend + season,lambda = 0)
+modelB.predict <- forecast(modelB.full,h=1)
+modelB.predict
+
+
+model.AR.full = Arima(residuals.modelB.full, order = c(2,0,0))
+model.AR.full.predict <- forecast(model.AR.full,h=1)
+model.AR.full.predict
+
+```
+
+
+
+
